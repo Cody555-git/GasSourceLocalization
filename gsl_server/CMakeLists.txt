@@ -6,7 +6,8 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release")
 endif()
 
-set(CMAKE_CXX_FLAGS "-g -glldb -Wpedantic -fno-omit-frame-pointer ${CMAKE_CXX_FLAGS}")
+set(CMAKE_CXX_FLAGS "-g -Wpedantic -fno-omit-frame-pointer ${CMAKE_CXX_FLAGS}")
+# 2026-09-15 loop: 元は "-glldb"（clang専用のLLDB向けデバッグ情報フラグ）。このコンテナはGCC 11なので "unrecognized debug output level" でCXX検出自体が落ちる。GCCでも通る "-g" に変更（デバッグ情報自体は出る。LLDB専用フォーマットではなくなるだけ）。
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 ${CMAKE_CXX_FLAGS}")
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 ${CMAKE_CXX_FLAGS}")
 set(CMAKE_CXX_STANDARD 20)
@@ -29,7 +30,7 @@ set(USE_GADEN OFF)
 set(USE_NAV_ASSISTANT OFF) 
 
 # Compile graphical interface with DearImGUI. Currently only affects the PMFS and SemanticPMFS algorithms. Not required to function, it is mostly for debugging purposes
-set(USE_GUI ON)
+set(USE_GUI OFF) # 2026-09-15 loop: SSH経由のFetchContent(ament_imgui)を避けるためOFF。GUIは動作に必須ではない
 
 
 # Tracy is a profiler. ON enables some instrumentation macros (and adds a dependency to tracy). To do sampling-based profiling you also need to run the node as sudo
@@ -93,12 +94,13 @@ include(src/gsl_server/algorithms/Common/CMakeLists.txt) # Required
 
 # You can disable the compilation of any of these algorithms by commenting them out here (useful if you don't want to install their dependencies)
 ###############################################################################################################################################
-include(src/gsl_server/algorithms/PlumeTracking/CMakeLists.txt)
-include(src/gsl_server/algorithms/Spiral/CMakeLists.txt)
-include(src/gsl_server/algorithms/ParticleFilter/CMakeLists.txt)
+# 2026-09-15 loop: まず GrGSL のみをビルドする（research/backlog.md P1-1）。他は一旦コメントアウト。
+# include(src/gsl_server/algorithms/PlumeTracking/CMakeLists.txt)
+# include(src/gsl_server/algorithms/Spiral/CMakeLists.txt)
+# include(src/gsl_server/algorithms/ParticleFilter/CMakeLists.txt)
 include(src/gsl_server/algorithms/GrGSL/CMakeLists.txt)
-include(src/gsl_server/algorithms/PMFS/CMakeLists.txt)
-include(src/gsl_server/algorithms/Semantics/CMakeLists.txt) # There is further modularity inside of this file!
+# include(src/gsl_server/algorithms/PMFS/CMakeLists.txt)
+# include(src/gsl_server/algorithms/Semantics/CMakeLists.txt) # There is further modularity inside of this file!
 
 
 
