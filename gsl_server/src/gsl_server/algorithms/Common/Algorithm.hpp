@@ -90,6 +90,15 @@ namespace GSL
 
         std::shared_ptr<rclcpp::Node> node;
 
+        // Calling the free function rclcpp::spin_some(node) builds and tears down a temporary
+        // SingleThreadedExecutor (add_node + spin_some + remove_node) on every single call. Doing
+        // that at 20 Hz on a node with this many subscriptions/clients/tf listeners triggers a
+        // heap corruption inside rclcpp::Executor::remove_node (observed 2026-09-16: repeatable
+        // SIGABRT "double free or corruption (out)" a few seconds into a run, in two different
+        // OnUpdate ticks). Keeping one long-lived executor (added once in the constructor) and
+        // calling executor.spin_some() instead avoids the repeated add/remove churn.
+        rclcpp::executors::SingleThreadedExecutor executor;
+
         BufferWrapper tfBuffer;
 
         StateMachines::StateMachine<GSL::State> stateMachine;

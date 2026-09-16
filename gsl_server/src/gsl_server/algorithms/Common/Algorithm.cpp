@@ -10,10 +10,14 @@ namespace GSL
 
     Algorithm::Algorithm(std::shared_ptr<rclcpp::Node> _node)
         : node(_node), tfBuffer(node->get_clock())
-    {}
+    {
+        executor.add_node(node);
+    }
 
     Algorithm::~Algorithm()
-    {}
+    {
+        executor.remove_node(node);
+    }
 
     void Algorithm::Initialize()
     {
@@ -28,7 +32,7 @@ namespace GSL
         while (resultLogging.robotPosesVector.size() == 0)
         {
             rate.sleep();
-            rclcpp::spin_some(node);
+            executor.spin_some();
             GSL_INFO("Waiting to hear from localization topic: {}", localizationSub->get_topic_name());
         }
 
@@ -69,7 +73,7 @@ namespace GSL
 
     void Algorithm::OnUpdate()
     {
-        rclcpp::spin_some(node);
+        executor.spin_some();
         stateMachine.getCurrentState()->OnUpdate();
         // Run anything that was submitted to main thread from the UI or a callback
         functionQueue.run();

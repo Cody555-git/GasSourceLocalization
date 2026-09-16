@@ -26,8 +26,15 @@ namespace GSL
     {
         GSL_TRACE("Got occupancy map");
         algorithm->onGetMap(msg);
-        mapSub = nullptr;
         hasMap = true;
+        // Resetting mapSub here (inside the subscription's own callback, while rclcpp::spin_some
+        // is still iterating the executor's entities) causes a double free in
+        // rclcpp::Executor::remove_node when spin_some tears down its temporary executor
+        // (observed 2026-09-16: SIGABRT "double free or corruption (out)" right after this
+        // callback ran). Deferring the reset to Algorithm::OnUpdate's functionQueue.run(),
+        // which executes after spin_some has returned, avoids destroying the subscription
+        // mid-callback.
+        algorithm->functionQueue.submit([this]() { mapSub = nullptr; });
         if (hasCostmap)
             setNextState();
     }
@@ -36,8 +43,8 @@ namespace GSL
     {
         GSL_TRACE("Got cost map");
         algorithm->onGetCostMap(msg);
-        costmapSub = nullptr;
         hasCostmap = true;
+        algorithm->functionQueue.submit([this]() { costmapSub = nullptr; });
         if (hasMap)
             setNextState();
     }
