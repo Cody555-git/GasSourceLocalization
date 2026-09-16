@@ -275,6 +275,23 @@ def launch_setup(context, *args, **kwargs):
 		]
 	)
 
+	# configureCoppeliaSim only broadcasts map->base_link (ground truth). nav2's
+	# local_costmap wants base_link<->odom (nav2_params.yaml global_frame for
+	# local_costmap is "<robot_name>_odom"). Publish an identity base_link->odom
+	# so the TF tree becomes map->base_link->odom; global costmap/AMCL keep using
+	# map->base_link directly, unaffected.
+	odom_tf = [
+		GroupAction(actions=[
+			PushRosNamespace(LaunchConfiguration("robot_name")),
+			Node(
+				package='tf2_ros',
+				executable='static_transform_publisher',
+				name='odom_tf_pub',
+				arguments = ['0', '0', '0', '0', '0', '0', parse_substitution('$(var robot_name)_base_link'), parse_substitution('$(var robot_name)_odom')],
+				parameters=[{'use_sim_time': True}]
+			),
+		])
+	]
 
 	returnList = []
 	returnList.extend(coppelia)
@@ -283,6 +300,7 @@ def launch_setup(context, *args, **kwargs):
 	returnList.extend(nav_assistant)
 	returnList.extend(anemometer)
 	returnList.extend(PID)
+	returnList.extend(odom_tf)
 	returnList.append(gmrf_wind)
 	returnList.append(rviz)
 	returnList.extend(gsl)
