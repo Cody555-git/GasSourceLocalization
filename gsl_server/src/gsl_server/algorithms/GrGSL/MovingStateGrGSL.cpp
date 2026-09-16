@@ -219,7 +219,7 @@ namespace GSL
 
         std::vector<WindVector> result(indices.size());
         auto future = clientWind->async_send_request(request);
-        auto future_result = rclcpp::spin_until_future_complete(grgsl.node, future, std::chrono::seconds(1));
+        auto future_result = algorithm->spinUntilFutureComplete(future, std::chrono::seconds(1));
         if (future_result == rclcpp::FutureReturnCode::SUCCESS)
         {
             auto response = future.get();

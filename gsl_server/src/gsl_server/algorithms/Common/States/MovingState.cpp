@@ -73,7 +73,7 @@ namespace GSL
         rclcpp_action::Client<NavigateToPose>::SendGoalOptions options;
         options.result_callback = std::bind(&MovingState::goalDoneCallback, this, std::placeholders::_1);
         auto future = nav_client->async_send_goal(goal, options);
-        rclcpp::FutureReturnCode code = rclcpp::spin_until_future_complete(algorithm->node, future, std::chrono::seconds(1));
+        rclcpp::FutureReturnCode code = algorithm->spinUntilFutureComplete(future, std::chrono::seconds(1));
 
         currentGoal = goal;
         if (code != rclcpp::FutureReturnCode::SUCCESS)
@@ -105,7 +105,7 @@ namespace GSL
         request->goal.pose = target;
 
         auto future = make_plan_client->async_send_request(request);
-        if (rclcpp::spin_until_future_complete(algorithm->node, future, std::chrono::seconds(1)) != rclcpp::FutureReturnCode::SUCCESS)
+        if (algorithm->spinUntilFutureComplete(future, std::chrono::seconds(1)) != rclcpp::FutureReturnCode::SUCCESS)
         {
             GSL_WARN("Unable to call make_plan!");
             return std::nullopt;
@@ -130,7 +130,7 @@ namespace GSL
         goal_options.result_callback = callback;
 
         auto future = make_plan_client->async_send_goal(plan_request, goal_options);
-        auto result = rclcpp::spin_until_future_complete(algorithm->node, future, std::chrono::seconds(1));
+        auto result = algorithm->spinUntilFutureComplete(future, std::chrono::seconds(1));
 
         // Check if valid goal with move_base srv
         if (result != rclcpp::FutureReturnCode::SUCCESS)
@@ -145,7 +145,7 @@ namespace GSL
         while (!currentPlan.has_value())
         {
             wait_rate.sleep();
-            rclcpp::spin_some(algorithm->node);
+            algorithm->spinSome();
         }
 
 #endif

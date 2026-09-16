@@ -48,7 +48,7 @@ def launch_setup(context, *args, **kwargs):
 				package="gsl_server",
 				executable="gsl_actionserver_node",
 				name="gsl_node",
-				prefix="xterm -hold -e",
+				output="screen",
 				parameters=[
 					# Common
 					{"robot_location_topic": "ground_truth"},

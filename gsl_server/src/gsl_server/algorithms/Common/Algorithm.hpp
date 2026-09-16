@@ -49,7 +49,20 @@ namespace GSL
         }
 
         Vector2 currentCoordinates() {return Vector2(currentRobotPose.pose.pose.position.x, currentRobotPose.pose.pose.position.y);}
-    protected:        
+
+        // node is permanently registered with 'executor' (see comment below), so any other code
+        // that needs to spin it -- e.g. waiting on a service/action future -- must go through this
+        // executor too. Calling the free functions rclcpp::spin_until_future_complete(node, ...) /
+        // rclcpp::spin_some(node) instead throws "node has already been added to an executor"
+        // (observed 2026-09-16 in MovingState::GetPlan/sendGoal once the grid was fine enough for
+        // the robot to actually attempt a move).
+        template <typename FutureT>
+        rclcpp::FutureReturnCode spinUntilFutureComplete(FutureT& future, std::chrono::nanoseconds timeout = std::chrono::nanoseconds(-1))
+        {
+            return executor.spin_until_future_complete(future, timeout);
+        }
+        void spinSome() { executor.spin_some(); }
+    protected:
         virtual void declareParameters();
         virtual GSLResult checkSourceFound();
         virtual void saveResultsToFile(GSLResult result);
