@@ -1,0 +1,35 @@
+<!-- Mission file for GADEN preprocessing, Lv1 (S5-406A, empty room)
+     Adapted from Exp_A/launch/GADEN_preprocessing.launch (2026-09-17, research P1 lv1 item).
+     cell_size / model list / empty_point / wind_files match research/environments.md
+     and env_materials/gaden_scenarios/s5406a_lv1/environment_configurations/config1/config.yaml.
+-->
+<launch>
+    <arg name="scenario" default="Lv1" />
+	<arg name="generateCoppeliaScene" default="False"/>
+
+    <node pkg="gaden_preprocessing" exec="preprocessing" name="preprocessing" output="screen" >
+
+        <param name="cell_size" value="0.05"/>
+
+        <param name="model_0" value="$(find-pkg-share grgsl_env)/$(var scenario)/cad_models/walls.stl"/>
+        <param name="model_1" value="$(find-pkg-share grgsl_env)/$(var scenario)/cad_models/inlet_wall.stl"/>
+        <param name="model_2" value="$(find-pkg-share grgsl_env)/$(var scenario)/cad_models/outlet_wall.stl"/>
+
+        <param name="outlets_model_0" value="$(find-pkg-share grgsl_env)/$(var scenario)/cad_models/outlet.stl"/>
+
+        <param name="empty_point_x" value="0.0"/>      ### (m) room centre, clear of walls
+        <param name="empty_point_y" value="0.0"/>
+        <param name="empty_point_z" value="0.45"/>
+
+        <param name="wind_files" value="$(find-pkg-share grgsl_env)/$(var scenario)/wind_simulations/steady/wind_at_cell_centers"/>
+
+        <param name="output_path" value="$(find-pkg-share grgsl_env)/$(var scenario)" />
+        <param name="generateCoppeliaScene" value="$(var generateCoppeliaScene)" />
+    </node>
+
+	<include file="$(find-pkg-share grgsl_env)/navigation_config/conditional_coppelia_launch.py" >
+      <arg name="launchCoppelia" value="$(var generateCoppeliaScene)"/>
+      <arg name="autoplay" value="False"/>
+      <arg name="headless" value="True"/>
+    </include>
+</launch>

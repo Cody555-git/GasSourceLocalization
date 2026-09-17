@@ -1,0 +1,80 @@
+<!-- Mission file for GADEN filament simulator
+    ROS - KINETIC
+-->
+
+<launch>
+    <arg name="scenario" default="Lv1" />
+    <arg name="wind_simulation" default="steady" />
+    <arg name="source_location_x" default="2.60" />
+    <arg name="source_location_y" default="0.125" />
+    <arg name="source_location_z" default="0.15" />
+
+    ### NODE environment (for RVIZ visualization) ###
+    <node pkg="gaden_environment" exec="environment" name="environment" output="screen">
+        <param name="verbose" value="false"/>
+        <param name="wait_preprocessing" value="false"/>
+        <param name="fixed_frame" value="map"/>
+
+        <param name="CAD_0" value="$(find-pkg-share grgsl_env)/$(var scenario)/cad_models/walls.stl"/>
+        <param name="CAD_0_color" value="[0.82, 0.86, 0.86]"/>
+
+        <param name="CAD_1" value="$(find-pkg-share grgsl_env)/$(var scenario)/cad_models/inlet_wall.stl"/>
+        <param name="CAD_1_color" value="[0.96, 0.17, 0.3]"/>
+
+        <param name="CAD_2" value="$(find-pkg-share grgsl_env)/$(var scenario)/cad_models/outlet_wall.stl"/>
+        <param name="CAD_2_color" value="[0.96, 0.17, 0.3]"/>
+
+        <param name="occupancy3D_data" value="$(find-pkg-share grgsl_env)/$(var scenario)/OccupancyGrid3D.csv" />
+
+        <param name="number_of_sources" value="1"/>
+        <param name="source_0_position_x" value="$(var source_location_x)"/>
+        <param name="source_0_position_y" value="$(var source_location_y)"/>
+        <param name="source_0_position_z" value="$(var source_location_z)"/>
+
+        <param name="source_0_scale" value="0.2"/>
+        <param name="source_0_color" value="[0.0, 1.0, 0.0] "/>
+    </node>
+
+
+    ### Filament Simulator (steady CFD wind, single frame) ###
+    <node pkg="gaden_filament_simulator" exec="filament_simulator" name="filament_simulator" output="screen">
+        <param name="verbose" value="false" />
+        <param name="wait_preprocessing" value="false"/>
+	    <param name="sim_time" value="300.0" />
+	    <param name="time_step" value="0.1" />
+	    <param name="num_filaments_sec" value="10" />
+	    <param name="variable_rate" value="false" />
+        <param name="filament_stop_steps" value="0" />
+        <param name="ppm_filament_center" value="10.0"/>
+        <param name="filament_initial_std" value="10.0"/>
+        <param name="filament_growth_gamma" value="10.0"/>
+        <param name="filament_noise_std" value="0.02"/>
+	    <param name="gas_type" value="0" />
+	    <param name="temperature" value="298.0"/>
+	    <param name="pressure" value="1.0"/>
+	    <param name="concentration_unit_choice" value="1"/>
+	    <param name="occupancy3D_data" value="$(find-pkg-share grgsl_env)/$(var scenario)/OccupancyGrid3D.csv" />
+	    <param name="fixed_frame" value="map"/>
+
+	    <param name="wind_data" value="$(find-pkg-share grgsl_env)/$(var scenario)/wind_simulations/$(var wind_simulation)/wind_at_cell_centers_" />
+	    <param name="wind_time_step" value="1.0" />
+        <param name="/allow_looping" value="true" />
+        <param name="/loop_from_step" value="0" />
+        <param name="/loop_to_step" value="0" />
+
+	    <param name="source_position_x" value="$(var source_location_x)"/>
+	    <param name="source_position_y" value="$(var source_location_y)"/>
+	    <param name="source_position_z" value="$(var source_location_z)"/>
+
+	    <param name="save_results" value="1" />
+	    <param name="restuls_time_step" value="0.5" />
+	    <param name="results_min_time" value="0.0" />
+	    <param name="results_location" value="$(find-pkg-share grgsl_env)/$(var scenario)/gas_simulations/sim1" />
+    </node>
+
+
+
+    ### RVIZ ###
+    <node name="rviz2" pkg="rviz2" exec="rviz2" args="-d $(find-pkg-share grgsl_env)/gaden.rviz"/>
+
+</launch>
