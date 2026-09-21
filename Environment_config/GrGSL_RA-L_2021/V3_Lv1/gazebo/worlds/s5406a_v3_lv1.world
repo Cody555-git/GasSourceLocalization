@@ -1,0 +1,111 @@
+<?xml version="1.0" ?>
+<!--
+  S5-406A V3 lv1 room as a static Gazebo world, built from the same
+  CAD (walls.stl / inlet_wall.stl / outlet_wall.stl) as the GADEN
+  environment (see gaden_player_v3.launch.py in ../launch). Meshes are
+  already in metres with the room origin at (0,0) -- same frame as
+  GADEN and the occupancy map, so no offset is applied here.
+  A-1 step 2 (backlog P1): room + spawn only, no robot sensors/GSL yet.
+-->
+<sdf version="1.7">
+  <world name="s5406a_v3_lv1">
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <plugin filename="ignition-gazebo-physics-system" name="ignition::gazebo::systems::Physics" />
+    <plugin filename="ignition-gazebo-scene-broadcaster-system" name="ignition::gazebo::systems::SceneBroadcaster" />
+    <plugin filename="ignition-gazebo-user-commands-system" name="ignition::gazebo::systems::UserCommands" />
+    <plugin filename="ignition-gazebo-sensors-system" name="ignition::gazebo::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="ignition-gazebo-contact-system" name="ignition::gazebo::systems::Contact" />
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 3 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>10 10</size>
+            </plane>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>10 10</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.6 0.6 0.6 1</ambient>
+            <diffuse>0.6 0.6 0.6 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="s5406a_v3_lv1_room">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="walls">
+        <collision name="walls_collision">
+          <geometry>
+            <mesh><uri>/home/ros2_ws/src/GasSourceLocalization/Environment_config/GrGSL_RA-L_2021/V3_Lv1/gazebo/meshes/S5-406A_V3_Lv1_Walls.stl</uri></mesh>
+          </geometry>
+        </collision>
+        <visual name="walls_visual">
+          <geometry>
+            <mesh><uri>/home/ros2_ws/src/GasSourceLocalization/Environment_config/GrGSL_RA-L_2021/V3_Lv1/gazebo/meshes/S5-406A_V3_Lv1_Walls.stl</uri></mesh>
+          </geometry>
+          <material>
+            <ambient>0.8 0.8 0.75 1</ambient>
+            <diffuse>0.8 0.8 0.75 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="inlet_wall">
+        <collision name="inlet_wall_collision">
+          <geometry>
+            <mesh><uri>/home/ros2_ws/src/GasSourceLocalization/Environment_config/GrGSL_RA-L_2021/V3_Lv1/gazebo/meshes/S5-406A_V3_Lv1_InletWall.stl</uri></mesh>
+          </geometry>
+        </collision>
+        <visual name="inlet_wall_visual">
+          <geometry>
+            <mesh><uri>/home/ros2_ws/src/GasSourceLocalization/Environment_config/GrGSL_RA-L_2021/V3_Lv1/gazebo/meshes/S5-406A_V3_Lv1_InletWall.stl</uri></mesh>
+          </geometry>
+          <material>
+            <ambient>0.2 0.6 0.9 1</ambient>
+            <diffuse>0.2 0.6 0.9 1</diffuse>
+          </material>
+        </visual>
+      </link>
+      <link name="outlet_wall">
+        <collision name="outlet_wall_collision">
+          <geometry>
+            <mesh><uri>/home/ros2_ws/src/GasSourceLocalization/Environment_config/GrGSL_RA-L_2021/V3_Lv1/gazebo/meshes/S5-406A_V3_Lv1_OutletWall.stl</uri></mesh>
+          </geometry>
+        </collision>
+        <visual name="outlet_wall_visual">
+          <geometry>
+            <mesh><uri>/home/ros2_ws/src/GasSourceLocalization/Environment_config/GrGSL_RA-L_2021/V3_Lv1/gazebo/meshes/S5-406A_V3_Lv1_OutletWall.stl</uri></mesh>
+          </geometry>
+          <material>
+            <ambient>0.9 0.5 0.2 1</ambient>
+            <diffuse>0.9 0.5 0.2 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+  </world>
+</sdf>
