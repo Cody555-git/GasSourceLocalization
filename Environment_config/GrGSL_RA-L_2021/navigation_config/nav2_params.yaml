@@ -100,6 +100,7 @@ $(var namespace):
 
   controller_server:
     ros__parameters:
+      use_sim_time: True
       controller_frequency: 20.0
       min_x_velocity_threshold: 0.001
       min_y_velocity_threshold: 0.5
@@ -171,6 +172,7 @@ $(var namespace):
   local_costmap:
     local_costmap:
       ros__parameters:
+        use_sim_time: True
         update_frequency: 5.0
         publish_frequency: 2.0
         global_frame: $(var namespace)_odom
@@ -213,6 +215,7 @@ $(var namespace):
   global_costmap:
     global_costmap:
       ros__parameters:
+        use_sim_time: True
         update_frequency: 1.0
         publish_frequency: 1.0
         global_frame: map
@@ -247,6 +250,7 @@ $(var namespace):
 
   planner_server:
     ros__parameters:
+      use_sim_time: True
       expected_planner_frequency: 20.0
       planner_plugins: ["GridBased"]
       GridBased:
@@ -266,6 +270,7 @@ $(var namespace):
 
   behavior_server:
     ros__parameters:
+      use_sim_time: True
       local_costmap_topic: $(var namespace)/local_costmap/costmap_raw
       global_costmap_topic: $(var namespace)/global_costmap/costmap_raw
       local_footprint_topic: $(var namespace)/local_costmap/published_footprint
