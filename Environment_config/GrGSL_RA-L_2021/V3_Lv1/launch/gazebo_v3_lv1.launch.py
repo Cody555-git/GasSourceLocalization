@@ -1,11 +1,12 @@
 """
 Gazebo Fortress (ign gazebo) smoke test: V3 lv1 room (../gazebo/worlds)
 + a public TurtleBot3 Waffle spawned at the real-robot start pose
-(-1.67, 0.99, yaw=0). No GADEN action server / nav2 / GrGSL here yet --
-this is A-1 step 3 (backlog P1): the room and robot show up together
-(step 2), and now `<robot>/ground_truth` (PoseWithCovarianceStamped) and
-TF map->base_link come from Gazebo's real model pose, not a fixed
-placeholder (spec-gazebo-waffle-robot: "position is ground truth").
+(-1.67, 0.99, yaw=0). No GADEN action server / nav2 / GrGSL action server
+here yet -- this is A-1 (backlog P1): room+robot in RViz (done), ground
+truth pose+TF from Gazebo (done), and now a DiffDrive plugin so /cmd_vel
+actually moves the robot in Gazebo (2026-09-21) -- a prerequisite for
+nav2 to have anything to drive. nav2 and gsl_server are still separate
+pieces to wire in.
 """
 import os
 
@@ -36,6 +37,24 @@ START_X = "-1.67"
 START_Y = "0.99"
 START_YAW = "0.0"
 
+# Wheel separation/radius read directly from turtlebot3_waffle.urdf's wheel
+# joint origins (y=+-0.144 -> 0.288 m apart) and collision cylinder radius
+# (0.033 m), 2026-09-21. The raw URDF ships with no <gazebo> plugin tags at
+# all (checked: `grep -i plugin turtlebot3_waffle.urdf` is empty), so without
+# this the robot spawns as a static prop -- cmd_vel has nothing to act on.
+DIFFDRIVE_PLUGIN_XML = """
+  <gazebo>
+    <plugin filename="ignition-gazebo-diff-drive-system"
+            name="ignition::gazebo::systems::DiffDrive">
+      <left_joint>${namespace}wheel_left_joint</left_joint>
+      <right_joint>${namespace}wheel_right_joint</right_joint>
+      <wheel_separation>0.288</wheel_separation>
+      <wheel_radius>0.033</wheel_radius>
+      <topic>cmd_vel</topic>
+    </plugin>
+  </gazebo>
+"""
+
 
 def generate_launch_description():
     use_rviz = LaunchConfiguration("use_rviz")
@@ -44,6 +63,7 @@ def generate_launch_description():
     urdf_path = os.path.join(turtlebot3_description_dir, "urdf", "turtlebot3_waffle.urdf")
     with open(urdf_path, "r") as f:
         robot_description = f.read()
+    robot_description = robot_description.replace("</robot>", DIFFDRIVE_PLUGIN_XML + "</robot>")
 
     return LaunchDescription([
         DeclareLaunchArgument("use_rviz", default_value="True"),
@@ -107,6 +127,23 @@ def generate_launch_description():
             name="ign_clock_bridge",
             output="screen",
             arguments=["/clock@rosgraph_msgs/msg/Clock[ignition.msgs.Clock"],
+        ),
+
+        # DiffDrive's <topic>cmd_vel</topic> resolves to the plain, unscoped
+        # GZ topic "/cmd_vel" for a single-model world -- NOT "/model/<name>/
+        # cmd_vel" as ros_gz_sim's own topic-scoping convention would suggest.
+        # Verified 2026-09-21 by direct `ign topic -p` tests: publishing to
+        # the /model/.../cmd_vel name did nothing (0 real movement over 2s of
+        # commands); publishing to plain /cmd_vel drove the robot ~3.7 m in
+        # 2s. If a second model is ever spawned in this world, re-check this
+        # (multi-robot would likely need <topic>/model/<name>/cmd_vel</topic>
+        # set explicitly in DIFFDRIVE_PLUGIN_XML to disambiguate).
+        Node(
+            package="ros_gz_bridge",
+            executable="parameter_bridge",
+            name="cmd_vel_bridge",
+            output="screen",
+            arguments=["/cmd_vel@geometry_msgs/msg/Twist]ignition.msgs.Twist"],
         ),
 
         # Gazebo's scene broadcaster publishes one Pose_V entry per entity
