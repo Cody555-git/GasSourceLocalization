@@ -1,19 +1,30 @@
 """
-Gazebo Fortress (ign gazebo) smoke test: V3 lv1 room (../gazebo/worlds)
-+ a public TurtleBot3 Waffle spawned at the real-robot start pose
-(-1.67, 0.99, yaw=0). No GADEN action server / nav2 / GrGSL action server
-here yet -- this is A-1 (backlog P1): room+robot in RViz (done), ground
-truth pose+TF from Gazebo (done), and now a DiffDrive plugin so /cmd_vel
-actually moves the robot in Gazebo (2026-09-21) -- a prerequisite for
-nav2 to have anything to drive. nav2 and gsl_server are still separate
+Gazebo Fortress (ign gazebo) launch for V3 lv1: room (../gazebo/worlds) +
+a public TurtleBot3 Waffle spawned at the real-robot start pose
+(-1.67, 0.99, yaw=0), driven by a DiffDrive plugin, with ground-truth
+pose+TF from Gazebo and nav2 bring-up (backlog A-1). gsl_server (GrGSL) and
+the sensor/wind nodes (anemometer, PID, gmrf_wind) are still separate
 pieces to wire in.
+
+Namespace policy (decided 2026-09-21, see research/loop/2026-09-21.md
+turn 7): follow the upstream GrGSL convention of a single PascalCase
+robot_name used two ways -- (a) as a literal TF frame prefix
+"<robot_name>_" on every link (matches nav2_params.yaml's
+"$(var namespace)_base_footprint"), and (b) as the ROS namespace
+(PushRosNamespace) for nav2 and, later, gsl_server/nav_assistant/
+anemometer/PID/gmrf_wind. Gazebo-facing bridge nodes (cmd_vel, pose, clock)
+stay outside that ROS namespace and use fully-qualified topic names instead,
+because the DiffDrive plugin's <topic> was already found not to respect
+ros_gz_sim's /model/<name>/... scoping (see the cmd_vel_bridge comment
+below) -- namespacing those bridges would just add a mismatch to debug.
 """
 import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, SetEnvironmentVariable
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, SetEnvironmentVariable
 from launch.conditions import IfCondition
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -22,15 +33,19 @@ LAUNCH_DIR = "/home/ros2_ws/src/GasSourceLocalization/Environment_config/GrGSL_R
 WORLD_PATH = os.path.join(GAZEBO_DIR, "worlds", "s5406a_v3_lv1.world")
 RVIZ_CONFIG = os.path.join(GAZEBO_DIR, "waffle_room_v3.rviz")
 V3_PROJECT_PATH = "/home/osl_env_s5406a/gaden_scenarios/s5406a_lv1/environment_configurations/config1"
+V3_NAV_MAP_YAML = "/home/osl_env_s5406a/maps_nav/s5406a_lv1.yaml"
 
 # SDF <world name="..."> in s5406a_v3_lv1.world -- Gazebo topics are namespaced
 # under this (confirmed via `ign topic -l` after launch, 2026-09-21).
 WORLD_NAME = "s5406a_v3_lv1"
 MODEL_NAME = "turtlebot3_waffle"
 
-# turtlebot3_description's raw URDF keeps a literal "${namespace}" prefix on
-# every link/joint name (not resolved by xacro since we load the .urdf as-is).
-BASE_FOOTPRINT_FRAME = "${namespace}base_footprint"
+# Upstream robot_name convention (e.g. "PioneerP3DX" in Exp_*/Lv1's
+# main_simbot.py) -- used as both the ROS namespace and the TF frame prefix.
+ROBOT_NAME = "TurtleBot3Waffle"
+FRAME_PREFIX = ROBOT_NAME + "_"
+BASE_FOOTPRINT_FRAME = FRAME_PREFIX + "base_footprint"
+GROUND_TRUTH_TOPIC = f"/{ROBOT_NAME}/ground_truth"
 
 # Real-robot start pose, fixed for lv1/lv2 (backlog P1, current-status 2026-09-18).
 START_X = "-1.67"
@@ -42,12 +57,12 @@ START_YAW = "0.0"
 # (0.033 m), 2026-09-21. The raw URDF ships with no <gazebo> plugin tags at
 # all (checked: `grep -i plugin turtlebot3_waffle.urdf` is empty), so without
 # this the robot spawns as a static prop -- cmd_vel has nothing to act on.
-DIFFDRIVE_PLUGIN_XML = """
+DIFFDRIVE_PLUGIN_XML = f"""
   <gazebo>
     <plugin filename="ignition-gazebo-diff-drive-system"
             name="ignition::gazebo::systems::DiffDrive">
-      <left_joint>${namespace}wheel_left_joint</left_joint>
-      <right_joint>${namespace}wheel_right_joint</right_joint>
+      <left_joint>{FRAME_PREFIX}wheel_left_joint</left_joint>
+      <right_joint>{FRAME_PREFIX}wheel_right_joint</right_joint>
       <wheel_separation>0.288</wheel_separation>
       <wheel_radius>0.033</wheel_radius>
       <topic>cmd_vel</topic>
@@ -63,6 +78,11 @@ def generate_launch_description():
     urdf_path = os.path.join(turtlebot3_description_dir, "urdf", "turtlebot3_waffle.urdf")
     with open(urdf_path, "r") as f:
         robot_description = f.read()
+    # Raw (non-xacro) URDF ships with a literal "${namespace}" placeholder on
+    # every link/joint name -- resolve it to FRAME_PREFIX so frame IDs match
+    # nav2_params.yaml's "$(var namespace)_base_footprint" convention instead
+    # of staying as the unresolved literal string (2026-09-21 cleanup).
+    robot_description = robot_description.replace("${namespace}", FRAME_PREFIX)
     robot_description = robot_description.replace("</robot>", DIFFDRIVE_PLUGIN_XML + "</robot>")
 
     return LaunchDescription([
@@ -188,10 +208,39 @@ def generate_launch_description():
                 "-p", f"model_name:={MODEL_NAME}",
                 "-p", "map_frame:=map",
                 "-p", f"child_frame:={BASE_FOOTPRINT_FRAME}",
-                "-p", "output_topic:=/ground_truth",
+                "-p", f"output_topic:={GROUND_TRUTH_TOPIC}",
                 "-p", "use_sim_time:=True",
             ],
             output="screen",
+        ),
+
+        # nav2 bring-up (backlog A-1 "まず直すところ": V3's map lives outside
+        # the grgsl_env package share dir, so this uses the map_yaml-arg
+        # variant instead of upstream's scenario-derived path -- see
+        # nav2_launch_v3.py docstring).
+        # Identity base_link->odom TF (upstream main_simbot.py's odom_tf
+        # GroupAction). nav2's local_costmap won't activate without an odom
+        # frame to transform into; ground truth already gives an accurate
+        # base_link pose, so odom==base_link (no separate odometry source).
+        Node(
+            package="tf2_ros",
+            executable="static_transform_publisher",
+            name="odom_tf_pub",
+            arguments=[
+                "0", "0", "0", "0", "0", "0",
+                FRAME_PREFIX + "base_link", FRAME_PREFIX + "odom",
+            ],
+            parameters=[{"use_sim_time": True}],
+        ),
+
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(LAUNCH_DIR, "nav2_launch_v3.py")
+            ),
+            launch_arguments={
+                "namespace": ROBOT_NAME,
+                "map_yaml": V3_NAV_MAP_YAML,
+            }.items(),
         ),
 
         Node(
