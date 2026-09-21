@@ -2,31 +2,45 @@
 Gazebo Fortress (ign gazebo) launch for V3 lv1: room (../gazebo/worlds) +
 a public TurtleBot3 Waffle spawned at the real-robot start pose
 (-1.67, 0.99, yaw=0), driven by a DiffDrive plugin, with ground-truth
-pose+TF from Gazebo and nav2 bring-up (backlog A-1). gsl_server (GrGSL) and
-the sensor/wind nodes (anemometer, PID, gmrf_wind) are still separate
-pieces to wire in.
+pose+TF from Gazebo, nav2 bring-up, GADEN gas playback, the anemometer/PID/
+gmrf_wind sensor stack, and gsl_server (GrGSL) itself (backlog A-1, "GSL を
+「中身のある完走」までもっていく").
 
 Namespace policy (decided 2026-09-21, see research/loop/2026-09-21.md
 turn 7): follow the upstream GrGSL convention of a single PascalCase
 robot_name used two ways -- (a) as a literal TF frame prefix
 "<robot_name>_" on every link (matches nav2_params.yaml's
 "$(var namespace)_base_footprint"), and (b) as the ROS namespace
-(PushRosNamespace) for nav2 and, later, gsl_server/nav_assistant/
-anemometer/PID/gmrf_wind. Gazebo-facing bridge nodes (cmd_vel, pose, clock)
-stay outside that ROS namespace and use fully-qualified topic names instead,
-because the DiffDrive plugin's <topic> was already found not to respect
-ros_gz_sim's /model/<name>/... scoping (see the cmd_vel_bridge comment
-below) -- namespacing those bridges would just add a mismatch to debug.
+(PushRosNamespace) for nav2, gsl_server, anemometer and PID.
+Gazebo-facing bridge nodes (cmd_vel, pose, clock) stay outside that ROS
+namespace and use fully-qualified topic names instead, because the
+DiffDrive plugin's <topic> was already found not to respect ros_gz_sim's
+/model/<name>/... scoping (see the cmd_vel_bridge comment below) --
+namespacing those bridges would just add a mismatch to debug.
+
+gaden_player and gmrf_wind_mapping_node are deliberately left OUTSIDE the
+ROS namespace too, matching upstream Lv1/launch/main_simbot.py exactly --
+not a stylistic choice. simulated_gas_sensor/simulated_anemometer call
+gaden_player's "/odor_value" and "/wind_value" services with a *leading
+slash* (gaden_ws/src/gaden/simulated_gas_sensor/src/*.cpp,
+simulated_anemometer/src/*.cpp), and gsl_server's GrGSL algorithm calls
+gmrf's wind-estimation service the same way (MovingStateGrGSL.cpp:12,
+create_client<WindEstimation>("/WindEstimation")) -- both are absolute
+names that PushRosNamespace would silently break by rewriting them to
+/TurtleBot3Waffle/odor_value etc., which nothing would be listening on.
+gmrf's own sensor_topic/map_topic params are instead given the namespaced
+topic strings explicitly (e.g. "TurtleBot3Waffle/Anemometer/..."), which
+still resolves correctly because gmrf itself lives in the root namespace.
 """
 import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, SetEnvironmentVariable
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, GroupAction, IncludeLaunchDescription, SetEnvironmentVariable
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
+from launch_ros.actions import Node, PushRosNamespace
 
 GAZEBO_DIR = "/home/ros2_ws/src/GasSourceLocalization/Environment_config/GrGSL_RA-L_2021/V3_Lv1/gazebo"
 LAUNCH_DIR = "/home/ros2_ws/src/GasSourceLocalization/Environment_config/GrGSL_RA-L_2021/V3_Lv1/launch"
@@ -51,6 +65,23 @@ GROUND_TRUTH_TOPIC = f"/{ROBOT_NAME}/ground_truth"
 START_X = "-1.67"
 START_Y = "0.99"
 START_YAW = "0.0"
+
+# V3 gas source, research/environments.md:265 ("ガス源 ... (2.87, 0.30, 0.15)").
+SOURCE_X = 2.87
+SOURCE_Y = 0.30
+SOURCE_Z = 0.15
+
+# 0.05 m/cell nav map x scale=10 -> 0.5 m belief-map cell (backlog A-1,
+# current-status "2026-09-21 の決定" D6). gmrf's cell_size is set to match
+# so the wind grid and GrGSL's occupancy-derived belief grid share a scale.
+GSL_SCALE = 10
+GMRF_CELL_SIZE = 0.5
+
+# 300 s trial cap, same value as [[Ojeda2021]]'s simulation setting (backlog A-1).
+MAX_SEARCH_TIME = 300.0
+
+RESULTS_FILE = "/home/ros2_ws/Results/GridGSL_V3_Lv1_A1.csv"
+NAVIGATION_PATH_FILE = "/home/ros2_ws/Results/GridGSL_V3_Lv1_A1_path.csv"
 
 # Wheel separation/radius read directly from turtlebot3_waffle.urdf's wheel
 # joint origins (y=+-0.144 -> 0.288 m apart) and collision cylinder radius
@@ -196,6 +227,25 @@ def generate_launch_description():
             parameters=[{"projectPath": V3_PROJECT_PATH, "fixed_frame": "map"}],
         ),
 
+        # Actual gas playback (the step-1 smoke test only exercised this
+        # through gaden_player_v3.launch.py in isolation -- it was missing
+        # here, so simulated_gas_sensor/simulated_anemometer below had
+        # nothing to call). 10 Hz matches scene1.yaml's 0.1 s frame spacing
+        # (research/loop/2026-09-21.md turn 1). Root namespace: see module
+        # docstring ("/odor_value"/"/wind_value" are absolute service names).
+        Node(
+            package="gaden_player",
+            executable="player",
+            name="gaden_player",
+            output="screen",
+            parameters=[{
+                "projectPath": V3_PROJECT_PATH,
+                "playbackID": "scene1",
+                "player_freq": 10.0,
+                "fixed_frame": "map",
+            }],
+        ),
+
         # map -> base_footprint from Gazebo's real model pose (ground truth,
         # spec-gazebo-waffle-robot: "位置は当面シミュレーションの真値を使う").
         # Replaces the fixed-pose static_transform_publisher used in step 2.
@@ -242,6 +292,119 @@ def generate_launch_description():
                 "map_yaml": V3_NAV_MAP_YAML,
             }.items(),
         ),
+
+        # Anemometer: wind reading + its mount TF (0.1 m, floor-mounted,
+        # spec-gazebo-waffle-robot / 2026-09-15 decision -- provisional mount
+        # height, real sensor placement unmeasured).
+        GroupAction(actions=[
+            PushRosNamespace(ROBOT_NAME),
+            Node(
+                package="simulated_anemometer",
+                executable="simulated_anemometer",
+                name="Anemometer",
+                output="screen",
+                parameters=[{
+                    "sensor_frame": FRAME_PREFIX + "anemometer_frame",
+                    "fixed_frame": "map",
+                    "noise_std": 0.3,
+                    "use_map_ref_system": False,
+                    "use_sim_time": True,
+                }],
+            ),
+            Node(
+                package="tf2_ros",
+                executable="static_transform_publisher",
+                name="anemometer_tf_pub",
+                arguments=[
+                    "0", "0", "0.1", "1.0", "0.0", "0", "0",
+                    FRAME_PREFIX + "base_link", FRAME_PREFIX + "anemometer_frame",
+                ],
+                parameters=[{"use_sim_time": True}],
+            ),
+        ]),
+
+        # PID gas sensor: concentration reading + its mount TF (0.17 m,
+        # front-center, provisional -- same spec/decision as the anemometer).
+        GroupAction(actions=[
+            PushRosNamespace(ROBOT_NAME),
+            Node(
+                package="simulated_gas_sensor",
+                executable="simulated_gas_sensor",
+                name="PID",
+                output="screen",
+                parameters=[{
+                    "sensor_model": 30,
+                    "sensor_frame": FRAME_PREFIX + "pid_frame",
+                    "fixed_frame": "map",
+                    "noise_std": 20.1,
+                    "use_sim_time": True,
+                }],
+            ),
+            Node(
+                package="tf2_ros",
+                executable="static_transform_publisher",
+                name="pid_tf_pub",
+                arguments=[
+                    "0", "0", "0.17", "1.0", "0.0", "0", "0",
+                    FRAME_PREFIX + "base_link", FRAME_PREFIX + "pid_frame",
+                ],
+                parameters=[{"use_sim_time": True}],
+            ),
+        ]),
+
+        # Wind mapping (GMRF). Root namespace -- see module docstring.
+        Node(
+            package="gmrf_wind_mapping",
+            executable="gmrf_wind_mapping_node",
+            name="gmrf",
+            output="screen",
+            parameters=[{
+                "sensor_topic": f"{ROBOT_NAME}/Anemometer/WindSensor_reading",
+                "map_topic": f"{ROBOT_NAME}/map",
+                "cell_size": GMRF_CELL_SIZE,
+                "use_sim_time": True,
+            }],
+        ),
+
+        # GrGSL itself. gsl_actionserver_call is the client that actually
+        # sends the "start searching" goal to gsl_actionserver_node; without
+        # it the action server just sits idle (upstream Lv1/main_simbot.py
+        # pattern -- both always launched together).
+        GroupAction(actions=[
+            PushRosNamespace(ROBOT_NAME),
+            Node(
+                package="gsl_server",
+                executable="gsl_actionserver_call",
+                name="gsl_call",
+                output="screen",
+                parameters=[{"method": "GrGSL"}],
+            ),
+            Node(
+                package="gsl_server",
+                executable="gsl_actionserver_node",
+                name="gsl_node",
+                output="screen",
+                parameters=[{
+                    "robot_location_topic": "ground_truth",
+                    "stop_and_measure_time": 1.0,
+                    "th_gas_present": 0.5,
+                    "th_wind_present": 0.1,
+                    "ground_truth_x": SOURCE_X,
+                    "ground_truth_y": SOURCE_Y,
+                    "resultsFile": RESULTS_FILE,
+                    "navigationPathFile": NAVIGATION_PATH_FILE,
+                    "maxSearchTime": MAX_SEARCH_TIME,
+                    "anemometer_frame": FRAME_PREFIX + "anemometer_frame",
+                    "scale": GSL_SCALE,
+                    "stdevHit": 1.0,
+                    "stdevMiss": 1.5,
+                    "convergence_thr": 0.5,
+                    "infoTaxis": False,
+                    "step": 0.8,
+                    "use_sim_time": True,
+                }],
+            ),
+        ]),
 
         Node(
             package="rviz2",

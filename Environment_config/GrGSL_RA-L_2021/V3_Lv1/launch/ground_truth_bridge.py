@@ -39,10 +39,18 @@ class GroundTruthBridge(Node):
         self.child_frame = self.get_parameter("child_frame").value
 
         self.tf_broadcaster = TransformBroadcaster(self)
+        # Reliable, not SENSOR_DATA (best-effort): gsl_actionserver_node's
+        # localizationSub (Algorithm.cpp:29) is a plain create_subscription
+        # with the rclcpp default (RELIABLE), so a best-effort publisher here
+        # is QoS-incompatible and silently drops every message -- confirmed
+        # 2026-09-21 turn 8 (gsl_node logged "New publisher discovered ...
+        # incompatible QoS ... RELIABILITY_QOS_POLICY" and hung forever on
+        # "Waiting to hear from localization topic"). The incoming TF stream
+        # subscription can stay best-effort; only the output pose needs to change.
         self.pose_pub = self.create_publisher(
             PoseWithCovarianceStamped,
             self.get_parameter("output_topic").value,
-            QoSPresetProfiles.SENSOR_DATA.value,
+            10,
         )
         self.create_subscription(
             TFMessage,
