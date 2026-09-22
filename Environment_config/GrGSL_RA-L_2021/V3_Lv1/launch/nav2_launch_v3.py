@@ -64,6 +64,16 @@ def launch_setup(context, *args, **kwargs):
 			name="controller_server",
 			output="screen",
 			parameters=[configured_params],
+			# controller_server publishes velocity on the relative topic
+			# "cmd_vel" (nav2_controller/controller_server.hpp), so under
+			# PushRosNamespace(TurtleBot3Waffle) it resolves to
+			# /TurtleBot3Waffle/cmd_vel -- but the Gazebo-facing cmd_vel_bridge
+			# in gazebo_v3_lv1.launch.py subscribes to the plain, unscoped
+			# /cmd_vel (see that file's DiffDrive comment). Remap here to an
+			# absolute name so the two actually connect (research/loop/
+			# 2026-09-22.md turn 3: robot was computing paths but /cmd_vel had
+			# 0 publishes, ending every run in a spin-recovery loop).
+			remappings=[("cmd_vel", "/cmd_vel")],
 		),
 		Node(
 			package="nav2_behaviors",
