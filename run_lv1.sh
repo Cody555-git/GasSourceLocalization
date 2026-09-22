@@ -6,7 +6,7 @@
 #     '/home/ros2_ws/src/GasSourceLocalization/run_lv1.sh'
 #
 # Ctrl-C / SIGTERM で Gazebo・nav2・GADEN など起動した全ノードを後片付けしてから終了する。
-set -uo pipefail
+set -o pipefail
 
 source /opt/ros/humble/setup.bash
 source /home/gaden_ws/install/setup.bash
@@ -16,6 +16,7 @@ export DISPLAY="${DISPLAY:-:10.0}"
 LAUNCH_PID=""
 
 cleanup() {
+    trap - EXIT INT TERM
     echo "[run_lv1] 後片付け中..."
     if [ -n "$LAUNCH_PID" ]; then
         kill -INT "$LAUNCH_PID" 2>/dev/null
