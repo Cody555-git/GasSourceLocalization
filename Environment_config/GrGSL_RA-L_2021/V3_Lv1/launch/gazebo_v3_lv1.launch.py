@@ -1,10 +1,25 @@
 """
 Gazebo Fortress (ign gazebo) launch for V3 lv1: room (../gazebo/worlds) +
-a public TurtleBot3 Waffle spawned at the real-robot start pose
-(-1.67, 0.99, yaw=0), driven by a DiffDrive plugin, with ground-truth
-pose+TF from Gazebo, nav2 bring-up, GADEN gas playback, the anemometer/PID/
-gmrf_wind sensor stack, and gsl_server (GrGSL) itself (backlog A-1, "GSL を
-「中身のある完走」までもっていく").
+the measured osl_robot (Cody555-git/osl_robot, osl_description package)
+spawned at the real-robot start pose (-1.67, 0.99, yaw=0), driven by a
+VelocityControl plugin, with ground-truth pose+TF from Gazebo, nav2
+bring-up, GADEN gas playback, the gas(x6)/anemometer/gmrf_wind sensor
+stack, and gsl_server (GrGSL) itself (backlog A-2,
+spec-gazebo-measured-urdf -- replaces the public TurtleBot3 Waffle used
+for A-1 with the real robot's own URDF, same room/start pose/GrGSL
+params).
+
+Locomotion (2026-09-23, spec-gazebo-measured-urdf sec.4, "意図的に変更"):
+osl_robot's URDF has no <gazebo> plugin of its own and its 4-wheel swerve
+kinematics are out of scope here -- only straight/turn-in-place motion is
+needed (real robot's actual usage). Ignition's DiffDrive plugin needs
+exactly two wheel joints and osl_robot has eight (4 steer + 4 wheel), so
+it was replaced with ignition::gazebo::systems::VelocityControl, which
+applies cmd_vel directly to the model body instead of driving wheel
+joints -- steer/wheel joints stay visually static (no dynamics). Assumed
+(not yet verified for this plugin) to share the same unscoped /cmd_vel
+topic behaviour DiffDrive showed in the Waffle build (see cmd_vel_bridge
+comment below); re-check with `ign topic -l` after first run.
 
 Namespace policy (decided 2026-09-21, see research/loop/2026-09-21.md
 turn 7): follow the upstream GrGSL convention of a single PascalCase
@@ -33,8 +48,8 @@ topic strings explicitly (e.g. "TurtleBot3Waffle/Anemometer/..."), which
 still resolves correctly because gmrf itself lives in the root namespace.
 """
 import os
+import subprocess
 
-from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, GroupAction, IncludeLaunchDescription, SetEnvironmentVariable
 from launch.conditions import IfCondition
@@ -52,7 +67,11 @@ V3_NAV_MAP_YAML = "/home/osl_env_s5406a/maps_nav/s5406a_lv1.yaml"
 # SDF <world name="..."> in s5406a_v3_lv1.world -- Gazebo topics are namespaced
 # under this (confirmed via `ign topic -l` after launch, 2026-09-21).
 WORLD_NAME = "s5406a_v3_lv1"
-MODEL_NAME = "turtlebot3_waffle"
+MODEL_NAME = "osl_robot"
+
+# osl_robot's own URDF -- single source of truth shared with the real robot
+# (Cody555-git/osl_robot, osl_description package). Not copied into this repo.
+OSL_ROBOT_XACRO = "/home/ros2_ws/src/osl_robot/src/osl_description/urdf/osl_robot.urdf.xacro"
 
 # Upstream robot_name convention (e.g. "PioneerP3DX" in Exp_*/Lv1's
 # main_simbot.py) -- used as both the ROS namespace and the TF frame prefix.
@@ -83,19 +102,15 @@ MAX_SEARCH_TIME = 300.0
 RESULTS_FILE = "/home/ros2_ws/Results/GridGSL_V3_Lv1_A1.csv"
 NAVIGATION_PATH_FILE = "/home/ros2_ws/Results/GridGSL_V3_Lv1_A1_path.csv"
 
-# Wheel separation/radius read directly from turtlebot3_waffle.urdf's wheel
-# joint origins (y=+-0.144 -> 0.288 m apart) and collision cylinder radius
-# (0.033 m), 2026-09-21. The raw URDF ships with no <gazebo> plugin tags at
-# all (checked: `grep -i plugin turtlebot3_waffle.urdf` is empty), so without
-# this the robot spawns as a static prop -- cmd_vel has nothing to act on.
-DIFFDRIVE_PLUGIN_XML = f"""
+# osl_robot.urdf.xacro ships with no <gazebo> plugin tags either (same as
+# the old public Waffle URDF), so without this the robot spawns as a static
+# prop -- cmd_vel has nothing to act on. See module docstring "Locomotion"
+# paragraph for why VelocityControl (whole-body) replaces DiffDrive
+# (two-wheel) here.
+VELOCITY_CONTROL_PLUGIN_XML = """
   <gazebo>
-    <plugin filename="ignition-gazebo-diff-drive-system"
-            name="ignition::gazebo::systems::DiffDrive">
-      <left_joint>{FRAME_PREFIX}wheel_left_joint</left_joint>
-      <right_joint>{FRAME_PREFIX}wheel_right_joint</right_joint>
-      <wheel_separation>0.288</wheel_separation>
-      <wheel_radius>0.033</wheel_radius>
+    <plugin filename="ignition-gazebo-velocity-control-system"
+            name="ignition::gazebo::systems::VelocityControl">
       <topic>cmd_vel</topic>
     </plugin>
   </gazebo>
@@ -105,24 +120,22 @@ DIFFDRIVE_PLUGIN_XML = f"""
 def generate_launch_description():
     use_rviz = LaunchConfiguration("use_rviz")
 
-    turtlebot3_description_dir = get_package_share_directory("turtlebot3_description")
-    urdf_path = os.path.join(turtlebot3_description_dir, "urdf", "turtlebot3_waffle.urdf")
-    with open(urdf_path, "r") as f:
-        robot_description = f.read()
-    # Raw (non-xacro) URDF ships with a literal "${namespace}" placeholder on
-    # every link/joint name -- resolve it to FRAME_PREFIX so frame IDs match
-    # nav2_params.yaml's "$(var namespace)_base_footprint" convention instead
-    # of staying as the unresolved literal string (2026-09-21 cleanup).
-    robot_description = robot_description.replace("${namespace}", FRAME_PREFIX)
-    robot_description = robot_description.replace("</robot>", DIFFDRIVE_PLUGIN_XML + "</robot>")
+    # osl_robot.urdf.xacro's own "prefix" xacro:arg (default "", real robot
+    # unaffected) already applies FRAME_PREFIX to every link/joint name --
+    # same convention the old raw-Waffle-URDF string-replace achieved by
+    # hand (spec-gazebo-measured-urdf sec.2, [[loop-state]] 2026-09-23).
+    robot_description = subprocess.run(
+        ["xacro", OSL_ROBOT_XACRO, f"prefix:={FRAME_PREFIX}"],
+        check=True, capture_output=True, text=True,
+    ).stdout
+    robot_description = robot_description.replace("</robot>", VELOCITY_CONTROL_PLUGIN_XML + "</robot>")
 
     return LaunchDescription([
         DeclareLaunchArgument("use_rviz", default_value="True"),
 
-        # turtlebot3_description's URDF uses package://turtlebot3_description/meshes/...
-        # which sdformat rewrites to model://turtlebot3_description/meshes/... -- Ignition
-        # resolves that by looking for a "turtlebot3_description" dir directly under one
-        # of these resource paths, which /opt/ros/humble/share provides.
+        # osl_robot's visuals are all primitive box/cylinder geometry (no mesh
+        # files), so only the room world's own resources need resolving --
+        # /opt/ros/humble/share is kept for GAZEBO_DIR-relative world assets.
         SetEnvironmentVariable(
             "IGN_GAZEBO_RESOURCE_PATH",
             GAZEBO_DIR + os.pathsep + "/opt/ros/humble/share",
@@ -162,7 +175,7 @@ def generate_launch_description():
         Node(
             package="ros_gz_sim",
             executable="create",
-            name="spawn_turtlebot3_waffle",
+            name="spawn_osl_robot",
             output="screen",
             arguments=[
                 "-topic", "robot_description",
@@ -180,15 +193,19 @@ def generate_launch_description():
             arguments=["/clock@rosgraph_msgs/msg/Clock[ignition.msgs.Clock"],
         ),
 
-        # DiffDrive's <topic>cmd_vel</topic> resolves to the plain, unscoped
+        # DiffDrive's <topic>cmd_vel</topic> resolved to the plain, unscoped
         # GZ topic "/cmd_vel" for a single-model world -- NOT "/model/<name>/
         # cmd_vel" as ros_gz_sim's own topic-scoping convention would suggest.
-        # Verified 2026-09-21 by direct `ign topic -p` tests: publishing to
-        # the /model/.../cmd_vel name did nothing (0 real movement over 2s of
-        # commands); publishing to plain /cmd_vel drove the robot ~3.7 m in
-        # 2s. If a second model is ever spawned in this world, re-check this
-        # (multi-robot would likely need <topic>/model/<name>/cmd_vel</topic>
-        # set explicitly in DIFFDRIVE_PLUGIN_XML to disambiguate).
+        # Verified 2026-09-21 by direct `ign topic -p` tests with DiffDrive:
+        # publishing to the /model/.../cmd_vel name did nothing (0 real
+        # movement over 2s of commands); publishing to plain /cmd_vel drove
+        # the robot ~3.7 m in 2s. VelocityControl (2026-09-23, see module
+        # docstring) is assumed to behave the same way but this has not been
+        # re-verified for that plugin -- check with `ign topic -p` again
+        # after the first A-2 run. If a second model is ever spawned in this
+        # world, re-check regardless (multi-robot would likely need
+        # <topic>/model/<name>/cmd_vel</topic> set explicitly in
+        # VELOCITY_CONTROL_PLUGIN_XML to disambiguate).
         Node(
             package="ros_gz_bridge",
             executable="parameter_bridge",
@@ -293,9 +310,13 @@ def generate_launch_description():
             }.items(),
         ),
 
-        # Anemometer: wind reading + its mount TF (0.1 m, floor-mounted,
-        # spec-gazebo-waffle-robot / 2026-09-15 decision -- provisional mount
-        # height, real sensor placement unmeasured).
+        # Anemometer: wind reading. TF comes straight from osl_robot's own
+        # "anemometer_link" fixed joint via robot_state_publisher now (no
+        # manual static_transform_publisher -- spec-gazebo-measured-urdf
+        # sec.1/2, 2026-09-23). Unlike the old Waffle-build static TF (qx=1,
+        # 180deg about x), the URDF joint has no rotation at all, so the
+        # sec.3 "180deg flip" hypothesis doesn't apply here; still needs the
+        # sec.6 wind-direction check against GADEN's field to confirm.
         GroupAction(actions=[
             PushRosNamespace(ROBOT_NAME),
             Node(
@@ -304,52 +325,47 @@ def generate_launch_description():
                 name="Anemometer",
                 output="screen",
                 parameters=[{
-                    "sensor_frame": FRAME_PREFIX + "anemometer_frame",
+                    "sensor_frame": FRAME_PREFIX + "anemometer_link",
                     "fixed_frame": "map",
                     "noise_std": 0.3,
                     "use_map_ref_system": False,
                     "use_sim_time": True,
                 }],
             ),
-            Node(
-                package="tf2_ros",
-                executable="static_transform_publisher",
-                name="anemometer_tf_pub",
-                arguments=[
-                    "0", "0", "0.1", "1.0", "0.0", "0", "0",
-                    FRAME_PREFIX + "base_link", FRAME_PREFIX + "anemometer_frame",
-                ],
-                parameters=[{"use_sim_time": True}],
-            ),
         ]),
 
-        # PID gas sensor: concentration reading + its mount TF (0.17 m,
-        # front-center, provisional -- same spec/decision as the anemometer).
+        # Gas sensors: all 6 of osl_robot's measured MiCS-5524 mounts, each
+        # its own simulated_gas_sensor node named after the URDF frame it
+        # reads TF from (node name -> default topic "<name>/Sensor_reading",
+        # fake_gas_sensor.cpp:33) -- TF again comes from osl_robot's own
+        # fixed joints, no manual static_transform_publisher.
+        # sensor_model 0 = TGS2620 (spec-gazebo-measured-urdf sec.3,
+        # 2026-09-23 user decision: closest MOX model GADEN ships to the
+        # real MiCS-5524; GADEN has no MiCS-5524 model). noise_std unchanged
+        # (still the PID-era 20.1 -- sec.3 says record, don't retune).
+        # Only gas_front_mid is wired into gsl_actionserver_node below
+        # (enose_topic param); the other 5 publish for rosbag/inspection only.
         GroupAction(actions=[
             PushRosNamespace(ROBOT_NAME),
-            Node(
-                package="simulated_gas_sensor",
-                executable="simulated_gas_sensor",
-                name="PID",
-                output="screen",
-                parameters=[{
-                    "sensor_model": 30,
-                    "sensor_frame": FRAME_PREFIX + "pid_frame",
-                    "fixed_frame": "map",
-                    "noise_std": 20.1,
-                    "use_sim_time": True,
-                }],
-            ),
-            Node(
-                package="tf2_ros",
-                executable="static_transform_publisher",
-                name="pid_tf_pub",
-                arguments=[
-                    "0", "0", "0.17", "1.0", "0.0", "0", "0",
-                    FRAME_PREFIX + "base_link", FRAME_PREFIX + "pid_frame",
-                ],
-                parameters=[{"use_sim_time": True}],
-            ),
+            *[
+                Node(
+                    package="simulated_gas_sensor",
+                    executable="simulated_gas_sensor",
+                    name=gas_frame,
+                    output="screen",
+                    parameters=[{
+                        "sensor_model": 0,
+                        "sensor_frame": FRAME_PREFIX + gas_frame,
+                        "fixed_frame": "map",
+                        "noise_std": 20.1,
+                        "use_sim_time": True,
+                    }],
+                )
+                for gas_frame in [
+                    "gas_front_top", "gas_front_mid", "gas_front_bottom",
+                    "gas_left", "gas_right", "gas_rear",
+                ]
+            ],
         ]),
 
         # Wind mapping (GMRF). Root namespace -- see module docstring.
@@ -387,6 +403,13 @@ def generate_launch_description():
                 parameters=[{
                     "robot_location_topic": "ground_truth",
                     "stop_and_measure_time": 1.0,
+                    # th_gas_present was tuned for the PID sensor's ppm-like
+                    # output. Left unchanged per spec-gazebo-measured-urdf
+                    # sec.3 ("閾値を変える必要があれば変えずにoutboxで報告
+                    # する") even though sensor_model is now TGS2620 (MOX,
+                    # resistance-based "raw" output) -- whether 0.5 still
+                    # means anything for that scale is unverified, flag in
+                    # outbox if it looks broken.
                     "th_gas_present": 0.5,
                     "th_wind_present": 0.1,
                     "ground_truth_x": SOURCE_X,
@@ -394,7 +417,13 @@ def generate_launch_description():
                     "resultsFile": RESULTS_FILE,
                     "navigationPathFile": NAVIGATION_PATH_FILE,
                     "maxSearchTime": MAX_SEARCH_TIME,
-                    "anemometer_frame": FRAME_PREFIX + "anemometer_frame",
+                    # Default is "PID/Sensor_reading" (Algorithm.cpp:39) --
+                    # osl_robot has no PID node anymore, only the 6 TGS2620
+                    # nodes named after their URDF frame (see gas sensor
+                    # GroupAction above). Only gas_front_mid feeds GrGSL
+                    # (spec-gazebo-measured-urdf sec.3).
+                    "enose_topic": "gas_front_mid/Sensor_reading",
+                    "anemometer_frame": FRAME_PREFIX + "anemometer_link",
                     "scale": GSL_SCALE,
                     "stdevHit": 1.0,
                     "stdevMiss": 1.5,
