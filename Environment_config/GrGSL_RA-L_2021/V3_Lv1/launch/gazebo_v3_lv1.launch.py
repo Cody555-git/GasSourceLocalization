@@ -317,6 +317,25 @@ def generate_launch_description():
         # 180deg about x), the URDF joint has no rotation at all, so the
         # sec.3 "180deg flip" hypothesis doesn't apply here; still needs the
         # sec.6 wind-direction check against GADEN's field to confirm.
+        # sec.6 item 6 (2026-09-24, tools/wind_direction_check.py): with the
+        # unrotated anemometer_link the reading brought back to map by
+        # Algorithm::windCallback is off by 2x the robot yaw (45deg -> 90,
+        # 90 -> 180), because fake_anemometer.cpp applies the map<-sensor
+        # transform to a map vector (inverse of what it needs). A child frame
+        # rolled 180deg about x makes that transform its own inverse, so the
+        # error is 0 at every yaw -- which is why Exp_A used qx=1. Feed the
+        # anemometer that frame; osl_robot's URDF stays unrotated.
+        Node(
+            package="tf2_ros",
+            executable="static_transform_publisher",
+            name="anemometer_gaden_tf_pub",
+            arguments=[
+                "--roll", "3.141592653589793",
+                "--frame-id", FRAME_PREFIX + "anemometer_link",
+                "--child-frame-id", FRAME_PREFIX + "anemometer_gaden_link",
+            ],
+            parameters=[{"use_sim_time": True}],
+        ),
         GroupAction(actions=[
             PushRosNamespace(ROBOT_NAME),
             Node(
@@ -325,7 +344,7 @@ def generate_launch_description():
                 name="Anemometer",
                 output="screen",
                 parameters=[{
-                    "sensor_frame": FRAME_PREFIX + "anemometer_link",
+                    "sensor_frame": FRAME_PREFIX + "anemometer_gaden_link",
                     "fixed_frame": "map",
                     "noise_std": 0.3,
                     "use_map_ref_system": False,
