@@ -403,14 +403,14 @@ def generate_launch_description():
                 parameters=[{
                     "robot_location_topic": "ground_truth",
                     "stop_and_measure_time": 1.0,
-                    # th_gas_present was tuned for the PID sensor's ppm-like
-                    # output. Left unchanged per spec-gazebo-measured-urdf
-                    # sec.3 ("閾値を変える必要があれば変えずにoutboxで報告
-                    # する") even though sensor_model is now TGS2620 (MOX,
-                    # resistance-based "raw" output) -- whether 0.5 still
-                    # means anything for that scale is unverified, flag in
-                    # outbox if it looks broken.
-                    "th_gas_present": 0.5,
+                    # TGS2620 via the fixed ppmFromGasMsg (R0 by mpn, fork
+                    # 4888edb) reads clean air as exactly 4.5735 ppm, sigma 0
+                    # (GADEN's MOX model has no noise; 3000 samples out of the
+                    # room, tools/gas_field_survey.py, 2026-09-24). 5.0 = just
+                    # above that floor. Fixed for the whole resolution sweep
+                    # (spec-gazebo-measured-urdf sec.6 item 0). Was 0.5 (PID
+                    # era) -> every reading was a hit.
+                    "th_gas_present": 5.0,
                     "th_wind_present": 0.1,
                     "ground_truth_x": SOURCE_X,
                     "ground_truth_y": SOURCE_Y,
