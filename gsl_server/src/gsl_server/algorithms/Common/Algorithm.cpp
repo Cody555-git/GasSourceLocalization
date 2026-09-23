@@ -286,7 +286,20 @@ namespace GSL
         // extract ppm reading from MOX sensors
         if (msg->raw_units == msg->UNITS_OHM)
         {
-            double rs_r0 = msg->raw / 50000.0;
+            // R0 per sensor model, same values as GADEN fake_gas_sensor.h (upstream hardcoded 50000 = TGS2600 only)
+            double r0;
+            switch (msg->mpn)
+            {
+            case olfaction_msgs::msg::GasSensor::MPN_TGS2620: r0 = 3000.0; break;
+            case olfaction_msgs::msg::GasSensor::MPN_TGS2600: r0 = 50000.0; break;
+            case olfaction_msgs::msg::GasSensor::MPN_TGS2611: r0 = 3740.0; break;
+            case olfaction_msgs::msg::GasSensor::MPN_TGS2610: r0 = 3740.0; break;
+            case olfaction_msgs::msg::GasSensor::MPN_TGS2612: r0 = 4500.0; break;
+            default:
+                GSL_ERROR("Unknown MOX sensor mpn: {}. Falling back to R0=50000", (int)msg->mpn);
+                r0 = 50000.0;
+            }
+            double rs_r0 = msg->raw / r0;
             return std::pow(rs_r0 / msg->calib_a, 1.0 / msg->calib_b);
         }
         else if (msg->raw_units == msg->UNITS_PPM)
