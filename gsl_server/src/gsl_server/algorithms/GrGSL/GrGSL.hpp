@@ -32,8 +32,14 @@ namespace GSL
         double probability(const Vector2Int& indices) const;
         GSLResult checkSourceFound() override;
         void saveResultsToFile(GSLResult result) override;
+        // OSL fork: per-iteration source-declaration metrics (log only, does not affect the stop rule)
+        void logDeclarationMetrics(bool gasHit, bool significantWind);
 
     private:
+        std::string declarationMetricsFile;
+        Vector2 previousExpectedSource;
+        bool hasPreviousExpectedSource = false;
+
         std::vector<GrGSL_internal::Cell> cells;
         std::vector<Occupancy> occupancy;
         Grid2DMetadata gridMetadata;
