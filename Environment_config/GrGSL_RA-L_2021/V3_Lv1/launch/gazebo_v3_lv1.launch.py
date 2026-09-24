@@ -51,7 +51,7 @@ import os
 import subprocess
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, GroupAction, IncludeLaunchDescription, SetEnvironmentVariable
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, GroupAction, IncludeLaunchDescription, SetEnvironmentVariable, TimerAction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -405,7 +405,12 @@ def generate_launch_description():
         # sends the "start searching" goal to gsl_actionserver_node; without
         # it the action server just sits idle (upstream Lv1/main_simbot.py
         # pattern -- both always launched together).
-        GroupAction(actions=[
+        # The call is delayed 15 s: wait_for_action_server() returns as soon
+        # as the server object exists, but gsl_node spends ~5 s initialising
+        # before it spins, and a goal sent in that window is silently lost
+        # (2026-09-24 item7f: goal at +0.5 s, server ready at +5 s -> GSL
+        # never started; t1 passed only because the order happened to be right).
+        TimerAction(period=15.0, actions=[GroupAction(actions=[
             PushRosNamespace(ROBOT_NAME),
             Node(
                 package="gsl_server",
@@ -414,6 +419,9 @@ def generate_launch_description():
                 output="screen",
                 parameters=[{"method": "GrGSL"}],
             ),
+        ])]),
+        GroupAction(actions=[
+            PushRosNamespace(ROBOT_NAME),
             Node(
                 package="gsl_server",
                 executable="gsl_actionserver_node",
