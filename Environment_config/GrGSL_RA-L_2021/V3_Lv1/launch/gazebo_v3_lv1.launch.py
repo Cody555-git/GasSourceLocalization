@@ -325,11 +325,20 @@ def generate_launch_description():
         # rolled 180deg about x makes that transform its own inverse, so the
         # error is 0 at every yaw -- which is why Exp_A used qx=1. Feed the
         # anemometer that frame; osl_robot's URDF stays unrotated.
+        # +1 mm z (A-4b, 2026-09-28): the measured mount is 50 mm above the
+        # floor, exactly on a GADEN wind-grid cell boundary. base_footprint
+        # comes back as z = -0.000 from Gazebo, so the query landed at
+        # z = 0.04999 and read the floor cell (wind = 0 everywhere; probe:
+        # z < 0.05 -> 0.0001 m/s, z >= 0.05 -> 3.05 m/s in the plume band).
+        # That made every A-4 wind observation "no wind" (avg ~0.01 m/s =
+        # the 0.1 * noise_std half-normal on zero). 1 mm keeps the real mount
+        # height to within the sensor's own size and lands in the right cell.
         Node(
             package="tf2_ros",
             executable="static_transform_publisher",
             name="anemometer_gaden_tf_pub",
             arguments=[
+                "--z", "0.001",
                 "--roll", "3.141592653589793",
                 "--frame-id", FRAME_PREFIX + "anemometer_link",
                 "--child-frame-id", FRAME_PREFIX + "anemometer_gaden_link",
