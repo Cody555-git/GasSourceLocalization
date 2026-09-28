@@ -56,6 +56,7 @@ from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node, PushRosNamespace
+from launch_ros.parameter_descriptions import ParameterValue
 
 GAZEBO_DIR = "/home/ros2_ws/src/GasSourceLocalization/Environment_config/GrGSL_RA-L_2021/V3_Lv1/gazebo"
 LAUNCH_DIR = "/home/ros2_ws/src/GasSourceLocalization/Environment_config/GrGSL_RA-L_2021/V3_Lv1/launch"
@@ -81,9 +82,17 @@ BASE_FOOTPRINT_FRAME = FRAME_PREFIX + "base_footprint"
 GROUND_TRUTH_TOPIC = f"/{ROBOT_NAME}/ground_truth"
 
 # Real-robot start pose, fixed for lv1/lv2 (backlog P1, current-status 2026-09-18).
+# These are the defaults of the start_x/start_y/start_yaw launch args (backlog
+# A-4c varies the start point). Only the Gazebo spawn needs them: map ->
+# base_footprint comes from ground_truth_bridge.py, so Nav2 has no initial pose.
 START_X = "-1.67"
 START_Y = "0.99"
 START_YAW = "0.0"
+
+# Upstream default (GrGSLLib.cpp). convergence_thr:=0.0 never fires
+# (variance < 0 is impossible), so the trial runs to maxSearchTime -- backlog
+# A-4c's "no stop rule" trials.
+CONVERGENCE_THR = "0.5"
 
 # V3 gas source, research/environments.md:265 ("ガス源 ... (2.87, 0.30, 0.15)").
 SOURCE_X = 2.87
@@ -136,6 +145,10 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument("use_rviz", default_value="True"),
+        DeclareLaunchArgument("start_x", default_value=START_X),
+        DeclareLaunchArgument("start_y", default_value=START_Y),
+        DeclareLaunchArgument("start_yaw", default_value=START_YAW),
+        DeclareLaunchArgument("convergence_thr", default_value=CONVERGENCE_THR),
 
         # osl_robot's visuals are all primitive box/cylinder geometry (no mesh
         # files), so only the room world's own resources need resolving --
@@ -184,8 +197,9 @@ def generate_launch_description():
             arguments=[
                 "-topic", "robot_description",
                 "-name", MODEL_NAME,
-                "-x", START_X, "-y", START_Y, "-z", "0.05",
-                "-Y", START_YAW,
+                "-x", LaunchConfiguration("start_x"),
+                "-y", LaunchConfiguration("start_y"), "-z", "0.05",
+                "-Y", LaunchConfiguration("start_yaw"),
             ],
         ),
 
@@ -467,7 +481,7 @@ def generate_launch_description():
                     "scale": GSL_SCALE,
                     "stdevHit": 1.0,
                     "stdevMiss": 1.5,
-                    "convergence_thr": 0.5,
+                    "convergence_thr": ParameterValue(LaunchConfiguration("convergence_thr"), value_type=float),
                     "infoTaxis": False,
                     "step": 0.8,
                     "use_sim_time": True,
