@@ -96,8 +96,12 @@ SOURCE_Z = 0.15
 GSL_SCALE = 10
 GMRF_CELL_SIZE = 0.5
 
-# 300 s trial cap, same value as [[Ojeda2021]]'s simulation setting (backlog A-1).
-MAX_SEARCH_TIME = 300.0
+# 600 s trial cap (backlog A-4b; d = 0.5 m, t = 600 s main + 300 s secondary,
+# decided 2026-09-27). Was 300 s ([[Ojeda2021]]'s simulation setting) up to A-4.
+# The t = 300 s success rate is read from the same trial's declaration CSV.
+# GADEN's playback window is 300 s (scene1.yaml), so a 600 s trial crosses the
+# phase-aligned loop seam once.
+MAX_SEARCH_TIME = 600.0
 
 RESULTS_FILE = "/home/ros2_ws/Results/GridGSL_V3_Lv1_A1.csv"
 NAVIGATION_PATH_FILE = "/home/ros2_ws/Results/GridGSL_V3_Lv1_A1_path.csv"
