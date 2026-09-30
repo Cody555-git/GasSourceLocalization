@@ -158,6 +158,9 @@ def generate_launch_description():
     # model (sensor_model 30, raw ppm, no rise/decay lag). Tests whether the
     # MOX decay lag causes the upwind false "gas" hits. Unset = unchanged.
     enose_model = 30 if os.environ.get("OSL_ENOSE", "") == "pid" else 0
+    # A-4d diagnostic (2026-09-30): OSL_TH_GAS overrides th_gas_present (ppm),
+    # e.g. 0.5 with OSL_ENOSE=pid, whose clean-air reading is 0. Unset = 5.0.
+    th_gas_present = float(os.environ.get("OSL_TH_GAS", "5.0"))
 
     return LaunchDescription([
         DeclareLaunchArgument("use_rviz", default_value="True"),
@@ -486,7 +489,7 @@ def generate_launch_description():
                     # above that floor. Fixed for the whole resolution sweep
                     # (spec-gazebo-measured-urdf sec.6 item 0). Was 0.5 (PID
                     # era) -> every reading was a hit.
-                    "th_gas_present": 5.0,
+                    "th_gas_present": th_gas_present,
                     "th_wind_present": 0.1,
                     "ground_truth_x": ParameterValue(LaunchConfiguration("source_x"), value_type=float),
                     "ground_truth_y": ParameterValue(LaunchConfiguration("source_y"), value_type=float),
