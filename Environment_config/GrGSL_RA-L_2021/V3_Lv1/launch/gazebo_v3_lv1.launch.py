@@ -153,6 +153,11 @@ def generate_launch_description():
             for w in ("front_right", "front_left", "rear_left", "rear_right")
         )
         robot_description = robot_description.replace("</robot>", mu_xml + "\n</robot>")
+    # A-4d diagnostic (2026-09-30): OSL_ENOSE=pid switches gas_front_mid (the
+    # only sensor feeding GrGSL) from TGS2620 (sensor_model 0) to GADEN's PID
+    # model (sensor_model 30, raw ppm, no rise/decay lag). Tests whether the
+    # MOX decay lag causes the upwind false "gas" hits. Unset = unchanged.
+    enose_model = 30 if os.environ.get("OSL_ENOSE", "") == "pid" else 0
 
     return LaunchDescription([
         DeclareLaunchArgument("use_rviz", default_value="True"),
@@ -417,7 +422,7 @@ def generate_launch_description():
                     name=gas_frame,
                     output="screen",
                     parameters=[{
-                        "sensor_model": 0,
+                        "sensor_model": enose_model if gas_frame == "gas_front_mid" else 0,
                         "sensor_frame": FRAME_PREFIX + gas_frame,
                         "fixed_frame": "map",
                         "noise_std": 20.1,
