@@ -142,6 +142,17 @@ def generate_launch_description():
         check=True, capture_output=True, text=True,
     ).stdout
     robot_description = robot_description.replace("</robot>", VELOCITY_CONTROL_PLUGIN_XML + "</robot>")
+    # A-4d (b-1d) diagnostic (2026-09-30): OSL_WHEEL_MU=<mu> overrides the
+    # ground-contact friction of the 4 wheel collisions (unset = URDF/Gazebo
+    # default, i.e. unchanged). Used to test whether the ~0.05 rad/s yaw dead
+    # band under VelocityControl comes from wheel-ground Coulomb friction.
+    wheel_mu = os.environ.get("OSL_WHEEL_MU", "")
+    if wheel_mu:
+        mu_xml = "".join(
+            f'\n  <gazebo reference="{FRAME_PREFIX}{w}_wheel_link"><mu1>{wheel_mu}</mu1><mu2>{wheel_mu}</mu2></gazebo>'
+            for w in ("front_right", "front_left", "rear_left", "rear_right")
+        )
+        robot_description = robot_description.replace("</robot>", mu_xml + "\n</robot>")
 
     return LaunchDescription([
         DeclareLaunchArgument("use_rviz", default_value="True"),
