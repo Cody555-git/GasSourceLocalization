@@ -81,6 +81,10 @@ def launch_setup(context, *args, **kwargs):
 			name="behavior_server",
 			output="screen",
 			parameters=[configured_params],
+			# Same relative "cmd_vel" as controller_server: the Spin/BackUp
+			# recovery behaviors published on /TurtleBot3Waffle/cmd_vel and
+			# never reached Gazebo (research/loop/2026-09-30.md turn 6).
+			remappings=[("cmd_vel", "/cmd_vel")],
 		),
 	]
 
