@@ -149,6 +149,12 @@ def generate_launch_description():
         DeclareLaunchArgument("start_y", default_value=START_Y),
         DeclareLaunchArgument("start_yaw", default_value=START_YAW),
         DeclareLaunchArgument("convergence_thr", default_value=CONVERGENCE_THR),
+        # A-4d (2026-09-30): swap the GADEN project (e.g. config_uniform, same
+        # room with an artificial uniform wind) and the ground truth written to
+        # the results CSV. Defaults are the CFD scenario, unchanged.
+        DeclareLaunchArgument("gaden_project", default_value=V3_PROJECT_PATH),
+        DeclareLaunchArgument("source_x", default_value=str(SOURCE_X)),
+        DeclareLaunchArgument("source_y", default_value=str(SOURCE_Y)),
 
         # osl_robot's visuals are all primitive box/cylinder geometry (no mesh
         # files), so only the room world's own resources need resolving --
@@ -259,7 +265,7 @@ def generate_launch_description():
             executable="environment",
             name="gaden_environment",
             output="screen",
-            parameters=[{"projectPath": V3_PROJECT_PATH, "fixed_frame": "map"}],
+            parameters=[{"projectPath": LaunchConfiguration("gaden_project"), "fixed_frame": "map"}],
         ),
 
         # Actual gas playback (the step-1 smoke test only exercised this
@@ -274,7 +280,7 @@ def generate_launch_description():
             name="gaden_player",
             output="screen",
             parameters=[{
-                "projectPath": V3_PROJECT_PATH,
+                "projectPath": LaunchConfiguration("gaden_project"),
                 "playbackID": "scene1",
                 "player_freq": 10.0,
                 "fixed_frame": "map",
@@ -466,8 +472,8 @@ def generate_launch_description():
                     # era) -> every reading was a hit.
                     "th_gas_present": 5.0,
                     "th_wind_present": 0.1,
-                    "ground_truth_x": SOURCE_X,
-                    "ground_truth_y": SOURCE_Y,
+                    "ground_truth_x": ParameterValue(LaunchConfiguration("source_x"), value_type=float),
+                    "ground_truth_y": ParameterValue(LaunchConfiguration("source_y"), value_type=float),
                     "resultsFile": RESULTS_FILE,
                     "navigationPathFile": NAVIGATION_PATH_FILE,
                     "maxSearchTime": MAX_SEARCH_TIME,
